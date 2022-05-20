@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nfs-client-provisioner
+  labels:
+    app: nfs-client-provisioner
+  # replace with namespace where provisioner is deployed
+  namespace: default  #与RBAC文件中的namespace保持一致
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nfs-client-provisioner
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nfs-client-provisioner
+  template:
+    metadata:
+      labels:
+        app: nfs-client-provisioner
+    spec:
+      serviceAccountName: nfs-client-provisioner
+      containers:
+        - name: nfs-client-provisioner
+          image: registry.cn-beijing.aliyuncs.com/qingfeng666/nfs-client-provisioner:v3.1.0
+          volumeMounts:
+            - name: nfs-client-root
+              mountPath: /persistentvolumes
+          env:
+            - name: PROVISIONER_NAME
+              value: qgg-nfs-storage  #provisioner名称,请确保该名称与 nfs-StorageClass.yaml文件中的provisioner名称保持一致
+            - name: NFS_SERVER
+              value: master   #NFS Server IP地址
+            - name: NFS_PATH
+              value: /nfsdata   #NFS挂载卷
+      volumes:
+        - name: nfs-client-root
+          nfs:
+            server: master  #NFS Server IP地址
+            path: /nfsdata    #NFS 挂载卷

@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-db-config
+data:
+  db-url: localhost
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp
+  labels:
+    name: myapp
+spec:
+  containers:
+  - name: myapp
+    image: busybox
+    command: ["sh","-c","env"]
+    envFrom:
+      - configMapRef:
+          name: my-db-config
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "500m"

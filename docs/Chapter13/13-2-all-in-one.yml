@@ -1,0 +1,210 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: prometheus-node-exporter
+  namespace: monitoring
+  labels:
+    app: prometheus
+    component: node-exporter
+spec:
+  selector:
+    matchLabels:
+      app: prometheus
+      component: node-exporter
+  template:
+    metadata:
+      name: prometheus-node-exporter
+      labels:
+        app: prometheus
+        component: node-exporter
+    spec:
+      containers:
+      - image: prom/node-exporter:v0.14.0
+        name: prometheus-node-exporter
+        ports:
+        - name: prom-node-exp
+          #^ must be an IANA_SVC_NAME (at most 15 characters, ..)
+          containerPort: 9100
+          hostPort: 9100
+      hostNetwork: true
+      hostPID: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/scrape: 'true'
+  name: prometheus-node-exporter
+  namespace: monitoring
+  labels:
+    app: prometheus
+    component: node-exporter
+spec:
+  clusterIP: None
+  ports:
+    - name: prometheus-node-exporter
+      port: 9100
+      protocol: TCP
+  selector:
+    app: prometheus
+    component: node-exporter
+  type: ClusterIP
+---
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-state-metrics
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-state-metrics
+subjects:
+- kind: ServiceAccount
+  name: kube-state-metrics
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-state-metrics
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - pods
+  - services
+  - resourcequotas
+  - replicationcontrollers
+  - limitranges
+  verbs: ["list", "watch"]
+- apiGroups: ["apps"]
+  resources:
+  - daemonsets
+  - deployments
+  - replicasets
+  verbs: ["list", "watch"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-state-metrics
+  namespace: monitoring
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-state-metrics
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube-state-metrics
+  template:
+    metadata:
+      labels:
+        app: kube-state-metrics
+    spec:
+      serviceAccountName: kube-state-metrics
+      containers:
+      - name: kube-state-metrics
+#       image: gcr.io/google_containers/kube-state-metrics:v0.5.0
+        image: registry.cn-beijing.aliyuncs.com/qua-io-coreos/kube-state-metrics:v1.3.0
+        ports:
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/scrape: 'true'
+  name: kube-state-metrics
+  namespace: monitoring
+  labels:
+    app: kube-state-metrics
+spec:
+  ports:
+  - name: kube-state-metrics
+    port: 8080
+    protocol: TCP
+  selector:
+    app: kube-state-metrics
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-directory-size-metrics
+  namespace: monitoring
+  annotations:
+    description: |
+      This `DaemonSet` provides metrics in Prometheus format about disk usage on the nodes.
+      The container `read-du` reads in sizes of all directories below /mnt and writes that to `/tmp/metrics`. It only reports directories larger then `100M` for now.
+      The other container `caddy` just hands out the contents of that file on request via `http` on `/metrics` at port `9102` which are the defaults for Prometheus.
+      These are scheduled on every node in the Kubernetes cluster.
+      To choose directories from the node to check, just mount them on the `read-du` container below `/mnt`.
+spec:
+  selector:
+    matchLabels:
+      app: node-directory-size-metrics
+  template:
+    metadata:
+      labels:
+        app: node-directory-size-metrics
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '9102'
+        description: |
+          This `Pod` provides metrics in Prometheus format about disk usage on the node.
+          The container `read-du` reads in sizes of all directories below /mnt and writes that to `/tmp/metrics`. It only reports directories larger then `100M` for now.
+          The other container `caddy` just hands out the contents of that file on request on `/metrics` at port `9102` which are the defaults for Prometheus.
+          This `Pod` is scheduled on every node in the Kubernetes cluster.
+          To choose directories from the node to check just mount them on `read-du` below `/mnt`.
+    spec:
+      containers:
+      - name: read-du
+        image: giantswarm/tiny-tools:latest
+        imagePullPolicy: IfNotPresent
+        command:
+        - fish
+        - --command
+        - |
+          touch /tmp/metrics-temp
+          while true
+            for directory in (du --bytes --separate-dirs --threshold=100M /mnt)
+              echo $directory | read size path
+              echo "node_directory_size_bytes{path=\"$path\"} $size" \
+                >> /tmp/metrics-temp
+            end
+            mv /tmp/metrics-temp /tmp/metrics
+            sleep 300
+          end
+        volumeMounts:
+        - name: host-fs-var
+          mountPath: /mnt/var
+          readOnly: true
+        - name: metrics
+          mountPath: /tmp
+      - name: caddy
+        image: dockermuenster/caddy:0.9.3
+        command:
+        - "caddy"
+        - "-port=9102"
+        - "-root=/var/www"
+        ports:
+        - containerPort: 9102
+        volumeMounts:
+        - name: metrics
+          mountPath: /var/www
+      volumes:
+      - name: host-fs-var
+        hostPath:
+          path: /var
+      - name: metrics
+        emptyDir:
+          medium: Memory

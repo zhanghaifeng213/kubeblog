@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubeblog-deployment
+  labels:
+    app: kubeblog
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kubeblog
+  template:
+    metadata:
+      labels:
+        app: kubeblog
+    spec:
+      containers:
+      - name: kubeblog
+        image: kubeblog:1.14.2
+        ports:
+        - containerPort: 5000
+

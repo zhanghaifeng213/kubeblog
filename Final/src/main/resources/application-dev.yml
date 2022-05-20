@@ -1,0 +1,28 @@
+spring:
+  datasource:
+    driver-class-name: com.mysql.jdbc.Driver
+    url: jdbc:mysql://${MYSQL_SERVER:192.168.99.101}:${MYSQL_PORT:3306}/${MYSQL_DB_NAME:blogDB}?useUnicode=true&characterEncoding=utf-8
+    username: ${MYSQL_USER_TEST:root}
+    password: ${MYSQL_PASSWORD_TEST:password}
+#    data: classpath:data.sql
+#    initialization-mode: ALWAYS
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+
+logging:
+  level:
+    root: info
+    com.qingfeng.blog: debug
+  file: log/blog.log
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+  endpoint:
+    health:
+      show-details: always

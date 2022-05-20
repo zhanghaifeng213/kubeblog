@@ -1,0 +1,84 @@
+# 5-8 为容器定义相互依赖的环境变量
+当创建一个 Pod 时，你可以为运行在 Pod 中的容器设置相互依赖的环境变量。 设置相互依赖的环境变量，你就可以在配置清单文件的  `env`  的  `value`  中使用 $(VAR_NAME)。
+
+在本练习中，你会创建一个单容器的 Pod。 此 Pod 的配置文件定义了一个已定义常用用法的相互依赖的环境变量。 下面是 Pod 的配置清单：
+
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dependent-envars-demo
+spec:
+  containers:
+    - name: dependent-envars-demo
+      args:
+        - while true; do echo -en '\n'; printf UNCHANGED_REFERENCE=$UNCHANGED_REFERENCE'\n'; printf SERVICE_ADDRESS=$SERVICE_ADDRESS'\n';printf ESCAPED_REFERENCE=$ESCAPED_REFERENCE'\n'; sleep 30; done;
+      command:
+        - sh
+        - -c
+      image: busybox
+      env:
+        - name: SERVICE_PORT
+          value: "80"
+        - name: SERVICE_IP
+          value: "172.17.0.1"
+        - name: UNCHANGED_REFERENCE
+          value: "$(PROTOCOL)://$(SERVICE_IP):$(SERVICE_PORT)"
+        - name: PROTOCOL
+          value: "https"
+        - name: SERVICE_ADDRESS
+          value: "$(PROTOCOL)://$(SERVICE_IP):$(SERVICE_PORT)"
+        - name: ESCAPED_REFERENCE
+          value: "$$(PROTOCOL)://$(SERVICE_IP):$(SERVICE_PORT)"
+
+```
+
+1.  依据清单创建 Pod：
+    
+    ```shell
+    kubectl apply -f https://k8s.io/examples/pods/inject/dependent-envars.yaml
+    
+    ```
+    
+    ```
+    pod/dependent-envars-demo created
+    
+    ```
+    
+2.  列出运行的 Pod：
+    
+    ```shell
+    kubectl get pods dependent-envars-demo
+    
+    ```
+    
+    ```
+    NAME                      READY     STATUS    RESTARTS   AGE
+    dependent-envars-demo     1/1       Running   0          9s
+    
+    ```
+    
+3.  检查 Pod 中运行容器的日志：
+    
+    ```shell
+    kubectl logs pod/dependent-envars-demo
+    
+    ```
+    
+    ```
+    
+    UNCHANGED_REFERENCE=$(PROTOCOL)://172.17.0.1:80
+    SERVICE_ADDRESS=https://172.17.0.1:80
+    ESCAPED_REFERENCE=$(PROTOCOL)://172.17.0.1:80
+    
+    ```
+    
+
+如上所示，你已经定义了  `SERVICE_ADDRESS`  的正确依赖引用，  `UNCHANGED_REFERENCE`  的错误依赖引用， 并跳过了  `ESCAPED_REFERENCE`  的依赖引用。
+
+如果环境变量被引用时已事先定义，则引用可以正确解析， 比如  `SERVICE_ADDRESS`  的例子。
+
+当环境变量未定义或仅包含部分变量时，未定义的变量会被当做普通字符串对待， 比如  `UNCHANGED_REFERENCE`  的例子。 注意，解析不正确的环境变量通常不会阻止容器启动。
+
+`$(VAR_NAME)`  这样的语法可以用两个  `$`  转义，既：`$$(VAR_NAME)`。 无论引用的变量是否定义，转义的引用永远不会展开。 这一点可以从上面  `ESCAPED_REFERENCE`  的例子得到印证。

@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp
+  labels:
+    name: myapp
+spec:
+  containers:
+  - name: myapp
+    image: nginx
+    volumeMounts:
+      - mountPath: /test-nginx
+        name: hostPathVolume
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "500m"
+    ports:
+      - containerPort: 80
+  volumes:
+    - name: hostPathVolume
+      hostPath:
+          path: /tmp/nginx
+          type: DirectoryOrCreate
+  
